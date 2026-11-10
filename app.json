@@ -1,0 +1,39 @@
+{
+  "expo": {
+    "name": "spet",
+    "slug": "spet",
+    "android": {
+      "package": "com.spet.app",
+      "name": "spet",
+      "slug": "snack-5c546be3-f179-49d9-aaa3-02632cd9cf2d",
+      "version": "1.0.0",
+      "orientation": "portrait",
+      "icon": "./assets/icon.png",
+      "userInterfaceStyle": "light",
+      "newArchEnabled": true,
+      "splash": {
+        "image": "./assets/splash-icon.png",
+        "resizeMode": "contain",
+        "backgroundColor": "#ffffff"
+      },
+      "ios": {
+        "supportsTablet": true
+      },
+      "android": {
+        "adaptiveIcon": {
+          "foregroundImage": "./assets/adaptive-icon.png",
+          "backgroundColor": "#ffffff"
+        },
+        "edgeToEdgeEnabled": true
+      },
+      "web": {
+        "favicon": "./assets/favicon.png"
+      }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "8818fc23-e6bc-49dc-b6e7-b1262a83b591"
+      }
+    }
+  }
+}
