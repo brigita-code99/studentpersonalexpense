@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 
 import {
   SafeAreaView,
@@ -17,6 +17,8 @@ import {
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { isSupabaseConfigured, supabase } from './lib/supabase';
+import AuthScreen from './screens/AuthScreen';
 
 /* ===================== THEME & DATA ===================== */
 
@@ -126,7 +128,14 @@ function ExpenseItem({ item, onDelete }) {
           -{formatMoney(item.amount)}
         </Text>
 
-        <TouchableOpacity onPress={() => onDelete(item.id)}>
+        <TouchableOpacity
+          onPress={async () => {
+            try {
+              await onDelete(item.id);
+            } catch (error) {
+              Alert.alert('Could not delete expense', error.message);
+            }
+          }}>
           <Text style={styles.deleteText}>Delete</Text>
         </TouchableOpacity>
       </View>
@@ -215,7 +224,7 @@ function Dashboard({
 
   const balance = allowance - totalExpenses;
 
-  function saveAllowance() {
+  async function saveAllowance() {
     const amount = Number(allowanceInput);
 
     if (
@@ -227,13 +236,19 @@ function Dashboard({
       return;
     }
 
-    onSetAllowance(amount);
+    try {
+      await onSetAllowance(amount);
+    } catch (error) {
+      Alert.alert('Could not save allowance', error.message);
+      return;
+    }
+
     setAllowanceInput('');
 
     Alert.alert('Success', 'Your allowance has been updated.');
   }
 
-  function submitExpense() {
+  async function submitExpense() {
     const amount = Number(expenseAmount);
 
     if (!expenseName.trim()) {
@@ -250,13 +265,16 @@ function Dashboard({
       return;
     }
 
-    onAddExpense({
-      id: String(Date.now()),
-      name: expenseName.trim(),
-      amount,
-      category,
-      date: new Date().toLocaleDateString('en-PH'),
-    });
+    try {
+      await onAddExpense({
+        name: expenseName.trim(),
+        amount,
+        category,
+      });
+    } catch (error) {
+      Alert.alert('Could not add expense', error.message);
+      return;
+    }
 
     setExpenseName('');
     setExpenseAmount('');
@@ -496,7 +514,13 @@ function HistoryScreen({ navigation, expenses, onDelete }) {
                 </Text>
 
                 <TouchableOpacity
-                  onPress={() => onDelete(item.id)}>
+                  onPress={async () => {
+                    try {
+                      await onDelete(item.id);
+                    } catch (error) {
+                      Alert.alert('Could not delete expense', error.message);
+                    }
+                  }}>
                   <Text style={styles.deleteText}>Delete</Text>
                 </TouchableOpacity>
               </View>
@@ -624,7 +648,7 @@ function SavingsScreen({ savings, onAddSaving, onDeleteSaving }) {
     cells.push(day);
   }
 
-  function saveMoney() {
+  async function saveMoney() {
     const amount = Number(amountInput);
 
     if (
@@ -641,13 +665,16 @@ function SavingsScreen({ savings, onAddSaving, onDeleteSaving }) {
 
     const now = new Date();
 
-    onAddSaving({
-      id: String(Date.now()),
-      amount,
-      note: note.trim() || 'Savings',
-      dateKey: toDateKey(now),
-      date: now.toLocaleDateString('en-PH'),
-    });
+    try {
+      await onAddSaving({
+        amount,
+        note: note.trim() || 'Savings',
+        dateKey: toDateKey(now),
+      });
+    } catch (error) {
+      Alert.alert('Could not add savings', error.message);
+      return;
+    }
 
     setAmountInput('');
     setNote('');
@@ -874,7 +901,13 @@ function SavingsScreen({ savings, onAddSaving, onDeleteSaving }) {
                 </Text>
 
                 <TouchableOpacity
-                  onPress={() => onDeleteSaving(item.id)}>
+                  onPress={async () => {
+                    try {
+                      await onDeleteSaving(item.id);
+                    } catch (error) {
+                      Alert.alert('Could not delete savings', error.message);
+                    }
+                  }}>
                   <Text style={styles.deleteText}>Delete</Text>
                 </TouchableOpacity>
               </View>
@@ -888,7 +921,97 @@ function SavingsScreen({ savings, onAddSaving, onDeleteSaving }) {
 
 /* ===================== ABOUT SCREEN ===================== */
 
-function AboutScreen() {
+const PRIVACY_POLICY_SECTIONS = [
+  {
+    title: 'Information you enter',
+    body:
+      'The app stores your email address with Supabase Authentication and your allowance, expense, and savings records in the connected Supabase project. Records are associated with your account and protected by database row-level security so authenticated users can access only their own records.',
+  },
+  {
+    title: 'Collection and sharing',
+    body:
+      'Your records are sent to the Supabase project configured for this app to provide account sign-in and cloud sync. Review Supabase’s privacy and security terms for information about its infrastructure and processing. The app does not intentionally share your records with other users.',
+  },
+  {
+    title: 'Your choices',
+    body:
+      'You can choose what information to enter. Use Reset All Data to delete your tracker records, or sign out from the About screen. Account deletion is not currently available in the app; contact the project administrator to request deletion of your account and associated data. Do not reuse a password from another service.',
+  },
+  {
+    title: 'Changes and questions',
+    body:
+      'This notice may be updated when the app changes. For questions about the app, contact its publisher through the app store or other channel where you received it.',
+  },
+];
+
+const TERMS_OF_USE_SECTIONS = [
+  {
+    title: 'What the app is for',
+    body:
+      'Student Personal Expense Tracker is a personal budgeting and record-keeping tool for educational purposes. It is not a bank, wallet, payment service, or financial adviser, and it does not move or store money.',
+  },
+  {
+    title: 'Your records',
+    body:
+      'You are responsible for the information you enter and for checking that totals and records meet your needs. Records are saved to your Supabase account. Keep your login credentials secure and do not rely on the app as your sole copy of important information.',
+  },
+  {
+    title: 'Not professional advice',
+    body:
+      'Budgets, balances, and summaries are provided for general tracking only. They are not financial, investment, tax, or legal advice. Make your own decisions and consult a qualified professional when appropriate.',
+  },
+  {
+    title: 'Availability and updates',
+    body:
+      'Features may change as the app is updated. The app depends on Supabase services and may not always be available or free from errors. Check important figures independently.',
+  },
+  {
+    title: 'Using the app responsibly',
+    body:
+      'Use the app lawfully and do not enter information you do not have permission to use. By using the app, you agree to these terms. If you do not agree, stop using it and request deletion of your account and tracker data from the project administrator.',
+  },
+];
+
+function PolicyScreen({ title, introduction, sections }) {
+  return (
+    <SafeAreaView style={styles.safeArea}>
+      <StatusBar
+        barStyle="light-content"
+        backgroundColor={COLORS.background}
+      />
+
+      <ScrollView
+        contentContainerStyle={styles.dashboardContent}
+        showsVerticalScrollIndicator={false}>
+        <View style={aboutStyles.aboutHeader}>
+          <Text style={aboutStyles.aboutEyebrow}>
+            STUDENT PERSONAL EXPENSE TRACKER
+          </Text>
+          <Text style={aboutStyles.aboutTitle}>{title}</Text>
+          <Text style={aboutStyles.aboutSubtitle}>
+            Last updated: November 10, 2026
+          </Text>
+        </View>
+
+        <View style={styles.formCard}>
+          <Text style={aboutStyles.aboutParagraph}>{introduction}</Text>
+          {sections.map((section) => (
+            <View key={section.title} style={aboutStyles.policySection}>
+              <Text style={aboutStyles.policySectionTitle}>
+                {section.title}
+              </Text>
+              <Text style={aboutStyles.aboutParagraph}>
+                {section.body}
+              </Text>
+            </View>
+          ))}
+        </View>
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
+function AboutScreen({ navigation, onSignOut }) {
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView
@@ -984,6 +1107,40 @@ function AboutScreen() {
           </View>
         </View>
 
+        <View style={styles.formCard}>
+          <SectionTitle>Policies</SectionTitle>
+
+          <TouchableOpacity
+            accessibilityRole="button"
+            style={aboutStyles.policyLink}
+            onPress={() => navigation.navigate('PrivacyPolicy')}>
+            <View style={aboutStyles.aboutFeatureInfo}>
+              <Text style={aboutStyles.policyLinkTitle}>
+                Privacy Policy
+              </Text>
+              <Text style={aboutStyles.aboutFeatureDescription}>
+                Learn how tracker information is handled.
+              </Text>
+            </View>
+            <Text style={aboutStyles.policyLinkArrow}>›</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            accessibilityRole="button"
+            style={aboutStyles.policyLink}
+            onPress={() => navigation.navigate('TermsOfUse')}>
+            <View style={aboutStyles.aboutFeatureInfo}>
+              <Text style={aboutStyles.policyLinkTitle}>
+                Terms of Use
+              </Text>
+              <Text style={aboutStyles.aboutFeatureDescription}>
+                Read the terms for using this app.
+              </Text>
+            </View>
+            <Text style={aboutStyles.policyLinkArrow}>›</Text>
+          </TouchableOpacity>
+        </View>
+
         <View style={aboutStyles.aboutFooter}>
           <Text style={aboutStyles.aboutFooterTitle}>
             STUDENT PERSONAL EXPENSE TRACKER
@@ -997,6 +1154,12 @@ function AboutScreen() {
             Developed for educational purposes.
           </Text>
         </View>
+
+        <TouchableOpacity
+          style={styles.signOutButton}
+          onPress={onSignOut}>
+          <Text style={styles.signOutButtonText}>Sign Out</Text>
+        </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
   );
@@ -1035,6 +1198,8 @@ function MenuNavigator({
   savings,
   addSavings,
   deleteSavings,
+  onResetAll,
+  onSignOut,
 }) {
   const icons = {
     Dashboard: '🏠',
@@ -1093,9 +1258,10 @@ function MenuNavigator({
             {...props}
             allowance={allowance}
             expenses={expenses}
-            setAllowance={setAllowance}
-            addExpense={addExpense}
-            deleteExpense={deleteExpense}
+            onSetAllowance={setAllowance}
+            onAddExpense={addExpense}
+            onDeleteExpense={deleteExpense}
+            onResetAll={onResetAll}
           />
         )}
       </Tab.Screen>
@@ -1105,7 +1271,7 @@ function MenuNavigator({
           <HistoryScreen
             {...props}
             expenses={expenses}
-            deleteExpense={deleteExpense}
+            onDelete={deleteExpense}
           />
         )}
       </Tab.Screen>
@@ -1115,13 +1281,15 @@ function MenuNavigator({
           <SavingsScreen
             {...props}
             savings={savings}
-            addSavings={addSavings}
-            deleteSavings={deleteSavings}
+            onAddSaving={addSavings}
+            onDeleteSaving={deleteSavings}
           />
         )}
       </Tab.Screen>
 
-      <Tab.Screen name="About" component={AboutScreen} />
+      <Tab.Screen name="About">
+        {props => <AboutScreen {...props} onSignOut={onSignOut} />}
+      </Tab.Screen>
     </Tab.Navigator>
   );
 }
@@ -1132,41 +1300,343 @@ export default function App() {
   const [allowance, setAllowance] = useState(0);
   const [expenses, setExpenses] = useState([]);
   const [savings, setSavings] = useState([]);
+  const [session, setSession] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [dataLoading, setDataLoading] = useState(false);
+  const [dataError, setDataError] = useState('');
+  const [authError, setAuthError] = useState('');
 
-  function addExpense(item) {
-    setExpenses((previous) => [item, ...previous]);
-  }
+  useEffect(() => {
+    if (!supabase) {
+      setAuthLoading(false);
+      return undefined;
+    }
 
-  function deleteExpense(id) {
-    setExpenses((previous) =>
-      previous.filter((item) => item.id !== id)
+    let active = true;
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      if (active) {
+        setSession(nextSession);
+      }
+    });
+
+    supabase.auth
+      .getSession()
+      .then(({ data, error }) => {
+        if (error) {
+          throw error;
+        }
+        if (active) {
+          setSession(data.session);
+        }
+      })
+      .catch((error) => {
+        if (active) {
+          setAuthError(error.message || 'Could not restore your session.');
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setAuthLoading(false);
+        }
+      });
+
+    return () => {
+      active = false;
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  const fetchUserData = useCallback(async (userId) => {
+    if (!supabase) {
+      throw new Error('Supabase is not configured.');
+    }
+
+    const [financeResult, expenseResult, savingsResult] = await Promise.all([
+      supabase
+        .from('user_finances')
+        .select('allowance')
+        .eq('user_id', userId)
+        .maybeSingle(),
+      supabase
+        .from('expenses')
+        .select('id, name, amount, category, expense_date')
+        .eq('user_id', userId)
+        .order('expense_date', { ascending: false })
+        .order('created_at', { ascending: false }),
+      supabase
+        .from('savings')
+        .select('id, amount, note, saving_date')
+        .eq('user_id', userId)
+        .order('saving_date', { ascending: false })
+        .order('created_at', { ascending: false }),
+    ]);
+
+    const failedResult = [financeResult, expenseResult, savingsResult].find(
+      (result) => result.error
     );
+    if (failedResult) {
+      throw failedResult.error;
+    }
+
+    return {
+      allowance: Number(financeResult.data?.allowance ?? 0),
+      expenses: (expenseResult.data ?? []).map((item) => ({
+        id: item.id,
+        name: item.name,
+        amount: Number(item.amount),
+        category: item.category,
+        date: new Date(`${item.expense_date}T00:00:00`).toLocaleDateString(
+          'en-PH'
+        ),
+      })),
+      savings: (savingsResult.data ?? []).map((item) => ({
+        id: item.id,
+        amount: Number(item.amount),
+        note: item.note,
+        dateKey: item.saving_date,
+        date: new Date(`${item.saving_date}T00:00:00`).toLocaleDateString(
+          'en-PH'
+        ),
+      })),
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!session) {
+      setAllowance(0);
+      setExpenses([]);
+      setSavings([]);
+      setDataError('');
+      setDataLoading(false);
+      return undefined;
+    }
+
+    let active = true;
+    setDataLoading(true);
+    setDataError('');
+
+    fetchUserData(session.user.id)
+      .then((data) => {
+        if (active) {
+          setAllowance(data.allowance);
+          setExpenses(data.expenses);
+          setSavings(data.savings);
+        }
+      })
+      .catch((error) => {
+        if (active) {
+          setDataError(error.message || 'Could not load your tracker data.');
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setDataLoading(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [fetchUserData, session]);
+
+  async function authenticate(email, password, isSignUp) {
+    if (!supabase) {
+      throw new Error('Supabase is not configured.');
+    }
+
+    const result = isSignUp
+      ? await supabase.auth.signUp({ email, password })
+      : await supabase.auth.signInWithPassword({ email, password });
+
+    if (result.error) {
+      throw result.error;
+    }
+
+    if (isSignUp && !result.data.session) {
+      return 'Account created. Check your email to confirm your address, then sign in.';
+    }
+
+    return '';
   }
 
-  function addSaving(item) {
-    setSavings((previous) => [item, ...previous]);
+  function requireUserId() {
+    if (!supabase || !session?.user?.id) {
+      throw new Error('Sign in before saving tracker data.');
+    }
+    return session.user.id;
   }
 
-  function deleteSaving(id) {
-    setSavings((previous) =>
-      previous.filter((item) => item.id !== id)
-    );
+  async function setAllowanceForUser(amount) {
+    const result = await supabase
+      .from('user_finances')
+      .upsert(
+        {
+          user_id: requireUserId(),
+          allowance: amount,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'user_id' }
+      );
+    if (result.error) {
+      throw result.error;
+    }
+    setAllowance(amount);
   }
 
-  function resetAllData() {
+  async function addExpense(item) {
+    const result = await supabase
+      .from('expenses')
+      .insert({
+        user_id: requireUserId(),
+        name: item.name,
+        amount: item.amount,
+        category: item.category,
+        expense_date: toDateKey(new Date()),
+      })
+      .select('id, name, amount, category, expense_date')
+      .single();
+    if (result.error) {
+      throw result.error;
+    }
+
+    const savedItem = {
+      id: result.data.id,
+      name: result.data.name,
+      amount: Number(result.data.amount),
+      category: result.data.category,
+      date: new Date(
+        `${result.data.expense_date}T00:00:00`
+      ).toLocaleDateString('en-PH'),
+    };
+    setExpenses((previous) => [savedItem, ...previous]);
+  }
+
+  async function deleteExpense(id) {
+    const result = await supabase
+      .from('expenses')
+      .delete()
+      .eq('user_id', requireUserId())
+      .eq('id', id)
+      .select('id')
+      .single();
+    if (result.error) {
+      throw result.error;
+    }
+    setExpenses((previous) => previous.filter((item) => item.id !== id));
+  }
+
+  async function addSaving(item) {
+    const result = await supabase
+      .from('savings')
+      .insert({
+        user_id: requireUserId(),
+        amount: item.amount,
+        note: item.note,
+        saving_date: item.dateKey,
+      })
+      .select('id, amount, note, saving_date')
+      .single();
+    if (result.error) {
+      throw result.error;
+    }
+
+    const savedItem = {
+      id: result.data.id,
+      amount: Number(result.data.amount),
+      note: result.data.note,
+      dateKey: result.data.saving_date,
+      date: new Date(
+        `${result.data.saving_date}T00:00:00`
+      ).toLocaleDateString('en-PH'),
+    };
+    setSavings((previous) => [savedItem, ...previous]);
+  }
+
+  async function deleteSaving(id) {
+    const result = await supabase
+      .from('savings')
+      .delete()
+      .eq('user_id', requireUserId())
+      .eq('id', id)
+      .select('id')
+      .single();
+    if (result.error) {
+      throw result.error;
+    }
+    setSavings((previous) => previous.filter((item) => item.id !== id));
+  }
+
+  async function resetAllData() {
+    const { error } = await supabase.rpc('reset_tracker_data');
+    if (error) {
+      Alert.alert('Could not reset data', error.message);
+      return;
+    }
     setAllowance(0);
     setExpenses([]);
     setSavings([]);
+    Alert.alert('Reset Successful', 'All tracker data has been cleared.');
+  }
 
-    Alert.alert(
-      'Reset Successful',
-      'All tracker data has been cleared.'
+  async function signOut() {
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+      Alert.alert('Could not sign out', error.message);
+    }
+  }
+
+  async function retryLoadingData() {
+    if (!session) {
+      return;
+    }
+    setDataLoading(true);
+    setDataError('');
+    try {
+      const data = await fetchUserData(session.user.id);
+      setAllowance(data.allowance);
+      setExpenses(data.expenses);
+      setSavings(data.savings);
+    } catch (error) {
+      setDataError(error.message || 'Could not load your tracker data.');
+    } finally {
+      setDataLoading(false);
+    }
+  }
+
+  if (authLoading) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <Text style={styles.status}>Checking your session...</Text>
+      </SafeAreaView>
+    );
+  }
+
+  if (session && (dataLoading || dataError)) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.statusCard}>
+          <Text style={styles.statusTitle}>
+            {dataLoading ? 'Loading your tracker' : 'Could not load your data'}
+          </Text>
+          {!!dataError && <Text style={styles.statusError}>{dataError}</Text>}
+          {!!dataError && (
+            <TouchableOpacity
+              style={styles.primaryButton}
+              onPress={retryLoadingData}>
+              <Text style={styles.primaryButtonText}>Try Again</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <NavigationContainer>
+    <NavigationContainer key={session?.user?.id || 'signed-out'}>
       <Stack.Navigator
+        initialRouteName={session ? 'Main' : 'Welcome'}
         screenOptions={{
           headerStyle: {
             backgroundColor: COLORS.surface,
@@ -1174,42 +1644,81 @@ export default function App() {
           headerTintColor: COLORS.white,
         }}>
 
-        <Stack.Screen
-          name="Welcome"
-          options={{ headerShown: false }}>
-          {({ navigation }) => (
-            <WelcomeScreen
-              onGetStarted={() => navigation.navigate('Main')}
-            />
-          )}
-        </Stack.Screen>
+        {!session && (
+          <Stack.Screen name="Welcome" options={{ headerShown: false }}>
+            {({ navigation }) => (
+              <WelcomeScreen
+                onGetStarted={() => navigation.navigate('Auth')}
+              />
+            )}
+          </Stack.Screen>
+        )}
+
+        {!session && (
+          <Stack.Screen name="Auth" options={{ title: 'Account' }}>
+            {() => (
+              <AuthScreen
+                onAuthenticate={authenticate}
+                initialError={authError}
+                isConfigured={isSupabaseConfigured}
+              />
+            )}
+          </Stack.Screen>
+        )}
+
+        {session && (
+          <Stack.Screen name="Main" options={{ headerShown: false }}>
+            {() => (
+              <MenuNavigator
+                allowance={allowance}
+                expenses={expenses}
+                setAllowance={setAllowanceForUser}
+                addExpense={addExpense}
+                deleteExpense={deleteExpense}
+                savings={savings}
+                addSavings={addSaving}
+                deleteSavings={deleteSaving}
+                onResetAll={resetAllData}
+                onSignOut={signOut}
+              />
+            )}
+          </Stack.Screen>
+        )}
+
+        {session && (
+          <Stack.Screen
+            name="ExpenseDetails"
+            component={ExpenseDetailsScreen}
+            options={{
+              title: 'Expense Details',
+              headerBackTitle: 'Back',
+            }}
+          />
+        )}
 
         <Stack.Screen
-          name="Main"
-          options={{ headerShown: false }}>
+          name="PrivacyPolicy"
+          options={{ title: 'Privacy Policy' }}>
           {() => (
-            <MenuNavigator
-              allowance={allowance}
-              expenses={expenses}
-              setAllowance={setAllowance}
-              addExpense={addExpense}
-              deleteExpense={deleteExpense}
-              savings={savings}
-              addSaving={addSaving}
-              deleteSaving={deleteSaving}
-              resetAllData={resetAllData}
+            <PolicyScreen
+              title="Privacy Policy"
+              introduction="This policy explains how Student Personal Expense Tracker handles information when you use the app."
+              sections={PRIVACY_POLICY_SECTIONS}
             />
           )}
         </Stack.Screen>
 
         <Stack.Screen
-          name="ExpenseDetails"
-          component={ExpenseDetailsScreen}
-          options={{
-            title: 'Expense Details',
-            headerBackTitle: 'Back',
-          }}
-        />
+          name="TermsOfUse"
+          options={{ title: 'Terms of Use' }}>
+          {() => (
+            <PolicyScreen
+              title="Terms of Use"
+              introduction="These terms describe the intended use and limitations of Student Personal Expense Tracker."
+              sections={TERMS_OF_USE_SECTIONS}
+            />
+          )}
+        </Stack.Screen>
       </Stack.Navigator>
     </NavigationContainer>
   );
@@ -1221,6 +1730,37 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: COLORS.background,
+  },
+
+  status: {
+    color: COLORS.white,
+    fontSize: 16,
+    textAlign: 'center',
+    marginTop: 40,
+  },
+
+  statusCard: {
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 16,
+    margin: 22,
+    marginTop: 100,
+    padding: 20,
+  },
+
+  statusTitle: {
+    color: COLORS.white,
+    fontSize: 24,
+    fontWeight: '900',
+    marginBottom: 8,
+  },
+
+  statusError: {
+    color: COLORS.red,
+    fontSize: 13,
+    lineHeight: 19,
+    marginBottom: 12,
   },
 
   welcomeContent: {
@@ -1661,6 +2201,19 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
 
+  signOutButton: {
+    backgroundColor: '#57302C',
+    padding: 14,
+    borderRadius: 10,
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+
+  signOutButtonText: {
+    color: '#FCA5A5',
+    fontWeight: 'bold',
+  },
+
   dashboardFooter: {
     color: '#6E9980',
     fontSize: 10,
@@ -1889,6 +2442,41 @@ const aboutStyles = StyleSheet.create({
     lineHeight: 22,
     marginBottom: 13,
     textAlign: 'justify',
+  },
+
+  policySection: {
+    marginTop: 8,
+  },
+
+  policySectionTitle: {
+    color: COLORS.white,
+    fontSize: 15,
+    fontWeight: '800',
+    marginBottom: 8,
+  },
+
+  policyLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.background,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: 14,
+    marginBottom: 10,
+  },
+
+  policyLinkTitle: {
+    color: COLORS.white,
+    fontSize: 14,
+    fontWeight: '800',
+    marginBottom: 4,
+  },
+
+  policyLinkArrow: {
+    color: COLORS.lightGreen,
+    fontSize: 28,
+    marginLeft: 12,
   },
 
   aboutFeature: {
